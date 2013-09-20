@@ -1,10 +1,14 @@
 #Desktop Word Report
 
-This tool will produce a PDF with two pages - One for a report and one for a map. Input to this script would be a property feature class and a feature class that is to be reported on. Multiple properties to a set of fields is accounted for, so one report will be produced in this case with many maps (depending on how many properties).
+This tool will produce a PDF with two pages - One for a report and one for a map. Input to this script would be a property feature class and a feature class that is to be reported on. Multiple features to one feature can be reported on, so one report can be produced with many maps attached.
 
 
 ## Features
 * Automated process to create reports and maps
+* Group maps by common field values
+* Works with Word and ArcMap document templates
+* Fast processing of multiple reports/maps
+
 
 ## Instructions
 * Open up tool in ArcGIS Desktop
@@ -16,15 +20,18 @@ This tool will produce a PDF with two pages - One for a report and one for a map
 	* Output folder
 * Run the tool and PDFs will be produced to the output folder.
 
+
 ## Requirements
 
-* ArcGIS Desktop 10.1/10.2
+* ArcGIS for Desktop 10.1/10.2
+* Microsoft Word 2007+
+
 
 ## Resources
 
 * [Blog](http://westonelli.wordpress.com)
 * [Twitter](https://twitter.com/Westonelli)
-
+* [Python for ArcGIS](http://resources.arcgis.com/en/communities/python)
 
 ## Issues
 
