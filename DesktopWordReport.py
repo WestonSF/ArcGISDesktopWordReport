@@ -30,7 +30,7 @@ sendEmail = "false"
 output = None
 
 # Start of main function
-def mainFunction(propertyFeatureClass,analysisFeatureClass,propertyIDField,mailAddressField,reportFields,reportFieldPlaceholders,mxdTemplate,layerSymbology,wordTemplate,outputFolder): # Get parameters from ArcGIS Desktop tool by seperating by comma e.g. (var1 is 1st parameter,var2 is 2nd parameter,var3 is 3rd parameter)  
+def mainFunction(propertyFeatureClass,analysisFeatureClass,groupFields,reportFields,reportFieldPlaceholders,mxdTemplate,layerSymbology,wordTemplate,outputFolder): # Get parameters from ArcGIS Desktop tool by seperating by comma e.g. (var1 is 1st parameter,var2 is 2nd parameter,var3 is 3rd parameter)  
     try:
         # Log start
         if logInfo == "true":
@@ -39,19 +39,26 @@ def mainFunction(propertyFeatureClass,analysisFeatureClass,propertyIDField,mailA
         # --------------------------------------- Start of code --------------------------------------- #        
 
         # Spatially join analysis feature class to property        
-        arcpy.SpatialJoin_analysis(propertyFeatureClass, analysisFeatureClass, "in_memory\PropertyAffected", "JOIN_ONE_TO_MANY", "KEEP_COMMON", "#", "INTERSECT")
+        arcpy.SpatialJoin_analysis(propertyFeatureClass, analysisFeatureClass, r"in_memory\PropertyAffected", "JOIN_ONE_TO_MANY", "KEEP_COMMON", "#", "INTERSECT")
 
-        # Get the number of duplicate mail addresses
-        arcpy.Frequency_analysis("in_memory\PropertyAffected", "in_memory\PropertyAffectedFrequency", mailAddressField, "")        
-        arcpy.JoinField_management("in_memory\PropertyAffected", mailAddressField, "in_memory\PropertyAffectedFrequency", mailAddressField, "FREQUENCY")
+        # Get the number of features for the grouping
+        # Create a new field for grouping reports 
+        arcpy.AddField_management("in_memory\PropertyAffected", "UNIQUEID", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "") 
+        arcpy.CalculateField_management("in_memory\PropertyAffected", "UNIQUEID", "\"\"", "PYTHON_9.3", "")
+        
+        # If a string, convert to array
+        if isinstance(groupFields, basestring):
+            groupFields = string.split(groupFields, ";")
+        for groupField in groupFields:
+            # Create a new unique ID to group reports on
+            arcpy.CalculateField_management("in_memory\PropertyAffected", "UNIQUEID", "!UNIQUEID! + \" \" + " + "!" + str(groupField) + "!", "PYTHON_9.3", "")
+
+        arcpy.Frequency_analysis("in_memory\PropertyAffected", r"in_memory\PropertyAffectedFrequency", "UNIQUEID", "")
+        arcpy.JoinField_management("in_memory\PropertyAffected", "UNIQUEID", r"in_memory\PropertyAffectedFrequency", "UNIQUEID", "FREQUENCY")
 
         # Add on report added field
         arcpy.AddField_management("in_memory\PropertyAffected", "ReportAdded", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
         arcpy.CalculateField_management("in_memory\PropertyAffected", "ReportAdded", "\"No\"", "PYTHON_9.3", "")
-
-        # Add on another valuation field - For adding maps to same mail address
-        arcpy.AddField_management("in_memory\PropertyAffected", "FirstProperty", "TEXT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
-        arcpy.CalculateField_management("in_memory\PropertyAffected", "FirstProperty", "!" + propertyIDField + "!", "PYTHON_9.3", "")
 
         # Setup map document
         mxd = arcpy.mapping.MapDocument(mxdTemplate)        
@@ -67,9 +74,9 @@ def mainFunction(propertyFeatureClass,analysisFeatureClass,propertyIDField,mailA
         symbologyLayer = arcpy.mapping.Layer(layerSymbology)
         arcpy.mapping.UpdateLayer(dataFrame, layer, symbologyLayer, True)
 
-        # Setup outpath paths
-        zipOutputPath = outputFolder + '\\Zip\\'
-        docOutputPath = outputFolder + '\\Docs\\'
+        # Setup temporary folder
+        zipOutputPath = arcpy.env.scratchFolder + '\\Zip\\'
+        docOutputPath = arcpy.env.scratchFolder + '\\Docs\\'
         # If it doesn't exist, create it
         if not os.path.exists(docOutputPath):
             os.makedirs(docOutputPath)
@@ -77,141 +84,108 @@ def mainFunction(propertyFeatureClass,analysisFeatureClass,propertyIDField,mailA
         # Setup the feature class to read through each of the attributes
         rows = arcpy.SearchCursor("in_memory\PropertyAffected")
         row = rows.next()
-
+          
         # Do the following until all the rows have been read       
         while row:
-                # Define the attributes required for the report       
-                OBJECTID = str(row.OBJECTID)
-                NumProperties = row.FREQUENCY
-                ReportAdded = str(row.ReportAdded)
-                FirstProperty = str(row.FirstProperty)
-                PropertyID = str(row.getValue(propertyIDField))
-                Owner_Mail = str(row.getValue(mailAddressField))
-  
-                # This will check to see if a report has already been created for this mail address
-                # If yes then only produce a map for the next property
-                if ReportAdded == 'Yes':
+            # Define the attributes required for the report       
+            OBJECTID = str(row.OBJECTID)
+            NumProperties = row.FREQUENCY
+            ReportAdded = str(row.ReportAdded)
+            UNIQUEID = str(row.UNIQUEID)
 
-                    # Open up the map document data frame, select the feature class and zoom to it
-                    layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
-                    arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + str(OBJECTID))
-                    dataFrame.extent = layer.getSelectedExtent(False)
-                    trueScale = dataFrame.scale * 4
-                    #Round scale to a more general number
-                    dataFrame.scale = round(trueScale, -2)
-                    arcpy.RefreshActiveView()
+            # This will check to see if a report has already been created for this mail address
+            # If yes, then only produce a map for the next property
+            if ReportAdded == 'Yes':
+
+                # Open up the map document data frame, select the feature class and zoom to it
+                layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
+                arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + OBJECTID)
+                dataFrame.extent = layer.getSelectedExtent(False)
+                trueScale = dataFrame.scale * 4
+                #Round scale to a more general number
+                dataFrame.scale = round(trueScale, -2)
+                arcpy.RefreshActiveView()
+            
+                # Export to PDF
+                arcpy.mapping.ExportToPDF(mxd, docOutputPath + "\\Map" + UNIQUEID + " - " + OBJECTID + ".pdf")
+                # Join to existing report                    
+                pdfReport = arcpy.mapping.PDFDocumentOpen(outputFolder + "\\ReportWithMap - " + UNIQUEID + ".pdf")
+                pdfReport.appendPages(docOutputPath + "\\Map" + UNIQUEID + " - " + OBJECTID + ".pdf")
+                pdfReport.saveAndClose()
                 
-                    # Export to PDF
-                    arcpy.mapping.ExportToPDF(mxd, docOutputPath + "\\Map" + PropertyID + ".pdf")           
-                # If no produce a report and map
-                else:
-                    # Unzip the word document to Open XML format and assign the document xml (contains the main content) to a variable
-                    zipDoc = zipfile.ZipFile(wordTemplate)
-                    zipDoc.extractall(zipOutputPath)
-                    wordDocXML = zipOutputPath + '\\word\\document.xml'
+            # If no, produce a report and map
+            else:                   
+                # Unzip the word document to Open XML format and assign the document xml (contains the main content) to a variable
+                zipDoc = zipfile.ZipFile(wordTemplate)
+                zipDoc.extractall(zipOutputPath)
+                wordDocXML = zipOutputPath + '\\word\\document.xml'
+            
+                # A find and replace  on the word document XML file
+                s = open(wordDocXML).read()
                 
-                    # A find and replace  on the word document XML file
-                    s = open(wordDocXML).read()
-                    
-                    # Replace mail address
-                    s = s.replace('XMAILADDRESSX', Owner_Mail)
+                # Put required fields and placeholders into an array
+                # If a string, convert to array
+                if isinstance(reportFields, basestring):
+                    reportFields = string.split(reportFields, ";")
+                if isinstance(reportFieldPlaceholders, basestring):                   
+                    reportFieldPlaceholders = string.split(reportFieldPlaceholders, ";")
 
-                    # Put required fields and placeholders into an array
-                    # If a string, convert to array
-                    if isinstance(reportFields, basestring):
-                        reportFields = string.split(reportFields, ";")
-                    if isinstance(reportFieldPlaceholders, basestring):                   
-                        reportFieldPlaceholders = string.split(reportFieldPlaceholders, ";")
+                # Loop through each of the report fields
+                count = 0
+                while (len(reportFields) > count):                      
+                    # Change and if in text
+                    value = str(row.getValue(reportFields[count])).replace("&", "and");
+                    # Find and replace text
+                    s = s.replace(str(reportFieldPlaceholders[count]), value)
+                    count = count + 1
 
-                    # Loop through each of the report fields
-                    count = 0
-                    while (len(reportFields) > count):
-                        # Find and replace text
-                        s = s.replace(str(reportFieldPlaceholders[count]), str(row.getValue(reportFields[count])))
-                        count = count + 1
+                f = open(wordDocXML, 'w')
+                f.write(s)              
+                f.close()
+                newDocZip = zipfile.ZipFile(docOutputPath + "\\Report - " + UNIQUEID + ".docx", "w")
+                root_len = len(os.path.abspath(zipOutputPath))
+                for root, dirs, files in os.walk(zipOutputPath):
+                    archive_root = os.path.abspath(root)[root_len:]
+                    for f in files:
+                        fullpath = os.path.join(root, f)
+                        archive_name = os.path.join(archive_root, f)
+                        newDocZip.write(fullpath, archive_name)
+                newDocZip.close()
 
-                    f = open(wordDocXML, 'w')
-                    f.write(s)              
-                    f.close()
+                # Open up word document                    
+                app = win32com.client.Dispatch('Word.Application')
+                app.Visible = 0
+                app.DisplayAlerts = 0                    
+                app.Documents.Open(docOutputPath + "\\Report - " + UNIQUEID + ".docx")                   
+                doc = app.ActiveDocument
+                # Save as PDF
+                doc.SaveAs(docOutputPath + "\\Report - " + UNIQUEID + ".pdf", FileFormat=17)                                      
+                doc.Close
+                app.Quit()
 
-                    newDocZip = zipfile.ZipFile(docOutputPath + "\\Report" + PropertyID + ".docx", "w")
-                    root_len = len(os.path.abspath(zipOutputPath))
-                    for root, dirs, files in os.walk(zipOutputPath):
-                        archive_root = os.path.abspath(root)[root_len:]
-                        for f in files:
-                            fullpath = os.path.join(root, f)
-                            archive_name = os.path.join(archive_root, f)
-                            newDocZip.write(fullpath, archive_name)
-                    newDocZip.close()
+                # Open up the map document data frame, select the feature class and zoom to it
+                layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
+                arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + OBJECTID)
+                dataFrame.extent = layer.getSelectedExtent(False)
+                trueScale = dataFrame.scale * 4
+                # Round scale to a more general number
+                dataFrame.scale = round(trueScale, -2)
+                arcpy.RefreshActiveView()
+            
+                # Export to PDF
+                arcpy.mapping.ExportToPDF(mxd, docOutputPath + "\\Map - " + UNIQUEID + ".pdf")
 
-                    # Open up word document                    
-                    app = win32com.client.Dispatch('Word.Application')
-                    app.Visible = 0
-                    app.DisplayAlerts = 0                    
-                    app.Documents.Open(docOutputPath + "\\Report" + PropertyID + ".docx")                   
-                    doc = app.ActiveDocument
-                    # Save as PDF
-                    doc.SaveAs(docOutputPath + "\\Report" + PropertyID + ".pdf", FileFormat=17)                                      
-                    doc.Close
-                    app.Quit()
+                # Create the report                    
+                pdfReport = arcpy.mapping.PDFDocumentCreate(outputFolder + "\\ReportWithMap - " + UNIQUEID + ".pdf")
+                pdfReport.appendPages(docOutputPath + "\\Report - " + UNIQUEID + ".pdf")
+                pdfReport.appendPages(docOutputPath + "\\Map - " + UNIQUEID + ".pdf")
+                pdfReport.saveAndClose()
 
-                    # Open up the map document data frame, select the feature class and zoom to it
-                    layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
-                    arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + str(OBJECTID))
-                    dataFrame.extent = layer.getSelectedExtent(False)
-                    trueScale = dataFrame.scale * 4
-                    # Round scale to a more general number
-                    dataFrame.scale = round(trueScale, -2)
-                    arcpy.RefreshActiveView()
-                
-                    # Export to PDF
-                    arcpy.mapping.ExportToPDF(mxd, docOutputPath + "\\Map" + PropertyID + ".pdf")
+                # Update report added field for unique ID    
+                arcpy.CalculateField_management("in_memory\PropertyAffected", "ReportAdded", "changeValue(!UNIQUEID!,!ReportAdded!)", "PYTHON_9.3", "def changeValue(var,var2):\\n  if var == \"" + UNIQUEID + "\":\\n    return \"Yes\"\\n  else:\\n    return var2")
 
-                # This section will append the report and map into a final report, first we need to see if it has already been created for
-                # mail address
-                # If yes, we need to open that pdf up and attach on another map to it.
-                pdfPath = outputFolder + "\\ReportWithMap" + FirstProperty + ".pdf"    
-                if os.path.exists(pdfPath):
-                    pdfReport = arcpy.mapping.PDFDocumentOpen(outputFolder + "\\ReportWithMap" + FirstProperty + ".pdf")
-                    if ReportAdded == 'No':
-                        pdfReport.appendPages(docOutputPath + "\\Report" + PropertyID + ".pdf")
-                        pdfReport.appendPages(docOutputPath + "\\Map" + PropertyID + ".pdf")
-                        pdfReport.saveAndClose()
-
-                        if NumProperties > 1:
-                            query = "if [Owner_Mail] = " + "\"" + Owner_Mail + "\" " + "Then\\n    var = \"Yes\"\\nElse\\n    var = [ReportAdded]\\nEnd If"
-                            query2 = "if [Owner_Mail] = " + "\"" + Owner_Mail + "\" " + "Then\\n    var2 = " + "\"" + PropertyID + "\" " + "\\nElse \\n    var2 = [FirstProperty] \\nEnd If"
-                            arcpy.CalculateField_management("in_memory\PropertyAffected", "ReportAdded", "var", "VB", query)
-                            arcpy.CalculateField_management("in_memory\PropertyAffected", "FirstProperty", "var2", "VB", query2)
-                        
-                        # Go to the next row until the while loop has finished        
-                        row = rows.next()           
-                    else:           
-                        pdfReport.appendPages(docOutputPath + "\\Map" + PropertyID + ".pdf")            
-                        pdfReport.saveAndClose()
-                        # Go to the next row until the while loop has finished        
-                        row = rows.next()
-                # If no, we create a new pdf and append the pages together.      
-                else:    
-                    pdfReport = arcpy.mapping.PDFDocumentCreate(outputFolder + "\\ReportWithMap" + FirstProperty + ".pdf")
-                    if ReportAdded == 'No':
-                        pdfReport.appendPages(docOutputPath + "\\Report" + PropertyID + ".pdf")
-                        pdfReport.appendPages(docOutputPath + "\\Map" + PropertyID + ".pdf")
-                        pdfReport.saveAndClose()
-
-                        if NumProperties > 1:
-                            query = "if [Owner_Mail] = " + "\"" + Owner_Mail + "\" " + "Then\\n    var = \"Yes\"\\nElse\\n    var = [ReportAdded]\\nEnd If"
-                            query2 = "if [Owner_Mail] = " + "\"" + Owner_Mail + "\" " + "Then\\n    var2 = " + "\"" + PropertyID + "\" " + "\\nElse \\n    var2 = [FirstProperty] \\nEnd If"
-                            arcpy.CalculateField_management("in_memory\PropertyAffected", "ReportAdded", "var", "VB", query)
-                            arcpy.CalculateField_management("in_memory\PropertyAffected", "FirstProperty", "var2", "VB", query2)
-
-                        # Go to the next row until the while loop has finished        
-                        row = rows.next()           
-                    else:           
-                        pdfReport.appendPages(docOutputPath + "\\Map" + PropertyID + ".pdf")            
-                        pdfReport.saveAndClose()
-                        # Go to the next row until the while loop has finished        
-                        row = rows.next()
+            # Next row                    
+            row = rows.next()
 
         # Remove temporary folders                 
         shutil.rmtree(zipOutputPath)

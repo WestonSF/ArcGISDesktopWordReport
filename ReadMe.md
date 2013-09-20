@@ -1,6 +1,6 @@
 #Desktop Word Report
 
-This tool will produce a PDF with two pages - One for a report and one for a map. Input to this script would be a property feature class and a feature class that is to be reported on. Multiple properties to one mail address is accounted for, so one report will be produced in this case with many maps (depending on how many properties).
+This tool will produce a PDF with two pages - One for a report and one for a map. Input to this script would be a property feature class and a feature class that is to be reported on. Multiple properties to a set of fields is accounted for, so one report will be produced in this case with many maps (depending on how many properties).
 
 
 ## Features
