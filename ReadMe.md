@@ -1,15 +1,20 @@
-#GitHub ReadMe Template
+#Desktop Word Report
 
 This tool will produce a PDF with two pages - One for a report and one for a map. Input to this script would be a property feature class and a feature class that is to be reported on. Multiple properties to one mail address is accounted for, so one report will be produced in this case with many maps (depending on how many properties).
 
-![Screenshot]()
 
 ## Features
 * Automated process to create reports and maps
 
 ## Instructions
-
-
+* Open up tool in ArcGIS Desktop
+* Set the parameters to your data:
+	* Property feature class
+	* Analysis feature class
+	* Layer symbology
+	* Fields to add into report
+	* Output folder
+* Run the tool and PDFs will be produced to the output folder.
 
 ## Requirements
 
