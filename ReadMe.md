@@ -23,8 +23,9 @@ This tool will produce a PDF with two pages - One for a report and one for a map
 
 ## Requirements
 
-* ArcGIS for Desktop 10.1/10.2
+* ArcGIS for Desktop 10.1+
 * Microsoft Word 2007+
+* Python 2.7 for Windows extension for 32 and 64 bit.
 
 
 ## Resources
