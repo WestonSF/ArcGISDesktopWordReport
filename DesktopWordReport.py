@@ -31,7 +31,7 @@ sendEmail = "false"
 output = None
 
 # Start of main function
-def mainFunction(propertyFeatureClass,analysisFeatureClass,groupFields,reportFields,reportFieldPlaceholders,mxdTemplate,layerSymbology,wordTemplate,outputFolder): # Get parameters from ArcGIS Desktop tool by seperating by comma e.g. (var1 is 1st parameter,var2 is 2nd parameter,var3 is 3rd parameter)  
+def mainFunction(propertyFeatureClass,analysisFeatureClass,groupFields,reportFields,reportFieldPlaceholders,mxdTemplate,dataFrameName,scaleBufferPercentage,dataFrameInsetName,insetScaleBufferPercentage,layerSymbology,wordTemplate,outputFolder): # Get parameters from ArcGIS Desktop tool by seperating by comma e.g. (var1 is 1st parameter,var2 is 2nd parameter,var3 is 3rd parameter)  
     try:
         # Log start
         if logInfo == "true":
@@ -65,18 +65,29 @@ def mainFunction(propertyFeatureClass,analysisFeatureClass,groupFields,reportFie
             # Setup map document
             mxd = arcpy.mapping.MapDocument(mxdTemplate)        
             # Reference data frame and the layer
-            dataFrame = arcpy.mapping.ListDataFrames(mxd, "Layers")[0]
+            dataFrame = arcpy.mapping.ListDataFrames(mxd, dataFrameName)[0]
             
             # Add the affected properties to the map
             arcpy.AddMessage("Adding features to map...")
             arcpy.MakeFeatureLayer_management("in_memory\PropertyAffected", "Properties Affected")  
             layer = arcpy.mapping.Layer("Properties Affected")
+            # Add layer to map
             arcpy.mapping.AddLayer(dataFrame,layer)
             layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
             # Update the symbology
             symbologyLayer = arcpy.mapping.Layer(layerSymbology)
             arcpy.mapping.UpdateLayer(dataFrame, layer, symbologyLayer, True)
 
+            # Reference second data frame if required and add layer        
+            if dataFrameInsetName:
+                dataFrameInset = arcpy.mapping.ListDataFrames(mxd, dataFrameInsetName)[0]
+                # Add layer to the map
+                arcpy.mapping.AddLayer(dataFrameInset,layer)
+                layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrameInset)[0]
+                # Update the symbology
+                symbologyLayer = arcpy.mapping.Layer(layerSymbology)
+                arcpy.mapping.UpdateLayer(dataFrameInset, layer, symbologyLayer, True)
+                
             # Setup temporary folder
             zipOutputPath = arcpy.env.scratchFolder + '\\Zip\\'
             docOutputPath = arcpy.env.scratchFolder + '\\Docs\\'
@@ -105,11 +116,21 @@ def mainFunction(propertyFeatureClass,analysisFeatureClass,groupFields,reportFie
                     layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
                     arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + OBJECTID)
                     dataFrame.extent = layer.getSelectedExtent(False)
-                    trueScale = dataFrame.scale * 4
+                    trueScale = dataFrame.scale * (float(scaleBufferPercentage)/100)
                     #Round scale to a more general number
                     dataFrame.scale = round(trueScale, -2)
                     arcpy.RefreshActiveView()
-                
+
+                    # For the inset map    
+                    if dataFrameInsetName:
+                        layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrameInset)[0]
+                        arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + OBJECTID)
+                        dataFrameInset.extent = layer.getSelectedExtent(False)
+                        trueScale = dataFrame.scale * (float(insetScaleBufferPercentage)/100)
+                        #Round scale to a more general number
+                        dataFrameInset.scale = round(trueScale, -2)
+                        arcpy.RefreshActiveView()
+                    
                     # Export to PDF
                     arcpy.mapping.ExportToPDF(mxd, docOutputPath + "\\Map" + UNIQUEID + " - " + OBJECTID + ".pdf")
                     # Join to existing report                    
@@ -171,11 +192,21 @@ def mainFunction(propertyFeatureClass,analysisFeatureClass,groupFields,reportFie
                     layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrame)[0]
                     arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + OBJECTID)
                     dataFrame.extent = layer.getSelectedExtent(False)
-                    trueScale = dataFrame.scale * 4
+                    trueScale = dataFrame.scale * (float(scaleBufferPercentage)/100)
                     # Round scale to a more general number
                     dataFrame.scale = round(trueScale, -2)
                     arcpy.RefreshActiveView()
-                
+
+                    # For the inset map    
+                    if dataFrameInsetName:
+                        layer = arcpy.mapping.ListLayers(mxd, "Properties Affected", dataFrameInset)[0]
+                        arcpy.SelectLayerByAttribute_management(layer, "NEW_SELECTION", '"OBJECTID" =' + OBJECTID)
+                        dataFrameInset.extent = layer.getSelectedExtent(False)
+                        trueScale = dataFrame.scale * (float(insetScaleBufferPercentage)/100)
+                        #Round scale to a more general number
+                        dataFrameInset.scale = round(trueScale, -2)
+                        arcpy.RefreshActiveView()
+                        
                     # Export to PDF
                     arcpy.mapping.ExportToPDF(mxd, docOutputPath + "\\Map - " + UNIQUEID + ".pdf")
 

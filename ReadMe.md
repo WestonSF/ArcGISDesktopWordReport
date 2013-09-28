@@ -8,13 +8,15 @@ This tool will produce a PDF with two pages - One for a report and one for a map
 * Group maps by common field values
 * Works with Word and ArcMap document templates
 * Fast processing of multiple reports/maps
-
+* Inset map option
 
 ## Instructions
 * Open up tool in ArcGIS Desktop
 * Set the parameters to your data:
 	* Property feature class
 	* Analysis feature class
+	* Scale buffer percentage
+	* Inset data frame
 	* Layer symbology
 	* Fields to add into report
 	* Output folder
